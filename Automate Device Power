@@ -1,0 +1,36 @@
+import requests
+
+# GNS3 Server Configuration
+GNS3_SERVER = "http://localhost:3080"
+PROJECT_ID = "Group17"
+
+def getDevices(server, project_id):
+    url = f"{server}/v2/projects/{project_id}/nodes"
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.json()
+
+def startDevice(server, project_id, device_id):
+    url = f"{server}/v2/projects/{project_id}/nodes/{device_id}/start"
+    response = requests.post(url)
+    if response.status_code == 204:
+        print(f"Device {device_id} started successfully.")
+    else:
+        print(f"Failed to start device {device_id}: {response.text}")
+
+def startAllDevices(server, project_id):
+    devices = getDevices(server, project_id)
+    if not devices:
+        print("No devices found in the project.")
+        return
+    for device in devices:
+        startDevice(server, project_id, device['node_id'])
+
+if __name__ == "__main__":
+    try:
+        print("Starting all devices...")
+        startAllDevices(GNS3_SERVER, PROJECT_ID)
+        print("All devices started.")
+    except requests.RequestException as e:
+        print(f"Error: {e}")
+
