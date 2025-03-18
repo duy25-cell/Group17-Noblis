@@ -1,0 +1,69 @@
+import requests
+import json
+import pandas as pd
+
+# Load Excel file
+def load_device_data(file_path, sheet_name="Devices, IPs, Ranges"):
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    return df
+
+# GNS3 Server Configuration
+GNS3_SERVER = "http://localhost:3080"
+PROJECT_NAME = "Enterprise_Network"
+
+# Function to create a project
+def create_project():
+    url = f"{GNS3_SERVER}/v2/projects"
+    data = {"name": PROJECT_NAME}
+    response = requests.post(url, json=data)
+    return response.json()
+
+# Function to create a node (router, switch, etc.)
+def create_node(project_id, node_name, node_type="router", x=0, y=0):
+    url = f"{GNS3_SERVER}/v2/projects/{project_id}/nodes"
+    node_data = {
+        "name": node_name,
+        "node_type": node_type,
+        "x": x,
+        "y": y
+    }
+    response = requests.post(url, json=node_data)
+    return response.json()
+
+# Function to connect nodes
+def create_link(project_id, node_a, node_b, port_a, port_b):
+    url = f"{GNS3_SERVER}/v2/projects/{project_id}/links"
+    link_data = {
+        "nodes": [
+            {"node_id": node_a, "adapter_number": 0, "port_number": port_a},
+            {"node_id": node_b, "adapter_number": 0, "port_number": port_b}
+        ]
+    }
+    response = requests.post(url, json=link_data)
+    return response.json()
+
+# Main function
+def setup_network(file_path):
+    data = load_device_data(file_path)
+    project = create_project()
+    project_id = project.get("project_id")
+    
+    nodes = {}
+    for index, row in data.iterrows():
+        device = row["Device/PortChannel"]
+        if pd.notna(device) and device not in nodes:
+            node = create_node(project_id, device)
+            nodes[device] = node["node_id"]
+    
+    for index, row in data.iterrows():
+        device_a = row["Device/PortChannel"]
+        device_b = row["Connected To Device"]
+        if pd.notna(device_a) and pd.notna(device_b):
+            port_a = int(row["Interface"].split("/")[-1])
+            port_b = int(row["Interface of Connected Device"].split("/")[-1])
+            create_link(project_id, nodes[device_a], nodes[device_b], port_a, port_b)
+    
+    print("Network setup completed in GNS3.")
+
+# Run the setup script
+setup_network("/mnt/data/Enterprise_Network_Group17.xlsx")
