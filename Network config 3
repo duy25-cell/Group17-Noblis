@@ -1,0 +1,383 @@
+from gns3fy import Gns3Connector, Project, Node, Link
+import paramiko
+import time
+import random
+import subprocess
+import os
+import warnings
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore")
+
+class VMWareGNS3Configurator:
+    @staticmethod
+    def configure_vmware_settings():
+        """Configure VMware settings as per the document requirements"""
+        try:
+            print("\n=== VMware Configuration ===")
+            print("Manual Steps Required (these can't be fully automated):")
+            print("1. Open VMware Workstation")
+            print("2. Go to Edit > Virtual Network Editor")
+            print("3. Add range of adapters matching GNS3's range")
+            print("4. Disable 'Use Local DHCP service...'")
+            print("5. For all adapters: Click Apply then OK")
+            print("6. Right-click 'GNS3VMBareMetal' under 'My Computer'")
+            print("7. Add Network Adapter: Host only and Bridged")
+            print("8. Assign adapters to the vmnets")
+            
+            # Verify VMware service is running
+            try:
+                subprocess.run(["vmware-networks", "--status"], check=True)
+                print("\nVMware network services verified")
+                return True
+            except:
+                print("\nWarning: Could not verify VMware network services")
+                return False
+        except Exception as e:
+            print(f"\nVMware configuration check failed: {e}")
+            return False
+
+    @staticmethod
+    def configure_gns3_settings():
+        """Configure GNS3 settings as per the document requirements"""
+        try:
+            print("\n=== GNS3 Configuration ===")
+            print("Manual Steps Required:")
+            print("1. Open GNS3")
+            print("2. Go to Edit > Preferences")
+            print("3. Server Settings:")
+            print("   - Ensure Host binding is set to 'localhost'")
+            print("   - Enable local server checkbox")
+            print("4. GNS3 VM Settings:")
+            print("   - Check 'Enable the GNS3 VM'")
+            print("5. VMware Settings:")
+            print("   - Go to advanced local settings")
+            print("   - Click 'Configure' button")
+            print("6. Ensure 'Replicate network connection' is checked for all devices")
+            return True
+        except Exception as e:
+            print(f"\nGNS3 configuration check failed: {e}")
+            return False
+
+class DeviceConfigurator:
+    def __init__(self):
+        # IP ranges as specified in the document
+        self.ip_ranges = {
+            'network': ('10.0.0.1', '10.0.255.254'),
+            'hosts': ('192.168.0.1', '192.168.255.254')
+        }
+        
+        # Interface mapping for routers and switches
+        self.interface_mapping = {
+            'router': {
+                'g0/0': 0, 'g0/1': 1, 'g0/2': 2, 'g0/3': 3,
+                'g0/4': 4, 'g0/5': 5, 'g0/6': 6, 'g0/7': 7
+            },
+            'switch': {
+                'g0/0': 0, 'g0/1': 1, 'g0/2': 2, 'g0/3': 3,
+                'g1/0': 4, 'g1/1': 5, 'g1/2': 6, 'g1/3': 7,
+                'g2/0': 8, 'g2/1': 9, 'g2/2': 10, 'g2/3': 11
+            }
+        }
+        
+        # Device templates and properties
+        self.device_profiles = {
+            'router': {
+                'template': 'vios',
+                'ram': 2048,
+                'vcpu': 2,
+                'adapters': 8,
+                'image': '~/Downloads/vios'
+            },
+            'switch': {
+                'template': 'vios_l2',
+                'ram': 1024,
+                'vcpu': 1,
+                'adapters': 12,
+                'image': '~/Downloads/vios_l2'
+            },
+            'end_device': {
+                'template': 'vpcs',
+                'adapters': 1
+            },
+            'cloud': {
+                'template': 'cloud',
+                'interfaces': ['VMnet1', 'VMnet8']
+            }
+        }
+
+    def generate_hostname(self, device_type, number):
+        """Generate hostname in format like R1, SW2, etc."""
+        prefix = {
+            'router': 'R',
+            'switch': 'SW',
+            'end_device': 'EndDevice',
+            'cloud': 'Cloud'
+        }.get(device_type.lower(), device_type.upper())
+        return f"{prefix}{number}"
+
+    def generate_ip(self, range_type):
+        """Generate random IP within specified range"""
+        start, end = self.ip_ranges[range_type]
+        start_parts = list(map(int, start.split('.')))
+        end_parts = list(map(int, end.split('.')))
+        
+        ip_parts = []
+        for i in range(4):
+            if i == 3:  # Last octet
+                value = random.randint(1, 254)  # Avoid 0 and 255
+            else:
+                value = random.randint(start_parts[i], end_parts[i])
+            ip_parts.append(str(value))
+            
+        return '.'.join(ip_parts)
+
+    def get_physical_port(self, device_type, interface):
+        """Get physical port number for interface"""
+        return self.interface_mapping.get(device_type.lower(), {}).get(interface, 0)
+
+    def get_initial_config_commands(self, hostname, device_type):
+        """Generate initial configuration commands"""
+        base_commands = [
+            "enable",
+            "configure terminal",
+            f"hostname {hostname}",
+            "enable secret group17enablesecret",
+            "username group17admin secret group17adminpassword",
+            "line console 0",
+            "login local",
+            "exec-timeout 15",
+            "logging synchronous"
+        ]
+        
+        # Device-specific configurations
+        if device_type.lower() == 'switch':
+            base_commands.extend([
+                "spanning-tree mode rapid-pvst",  # Spanning tree as per document
+                "exit"
+            ])
+        
+        base_commands.extend([
+            "do write",
+            "end"
+        ])
+        
+        return base_commands
+
+class NetworkManager:
+    def __init__(self, server_url="http://localhost:3080"):
+        self.server = Gns3Connector(server_url)
+        self.project = None
+        self.nodes = {}
+        self.configurator = DeviceConfigurator()
+        self.vmware_gns3_config = VMWareGNS3Configurator()
+        
+        # Verify environment before proceeding
+        self.verify_environment()
+
+    def verify_environment(self):
+        """Verify VMware and GNS3 are properly configured"""
+        print("=== Environment Verification ===")
+        if not self.vmware_gns3_config.configure_vmware_settings():
+            print("\nWarning: VMware may not be properly configured")
+        
+        if not self.vmware_gns3_config.configure_gns3_settings():
+            print("\nWarning: GNS3 may not be properly configured")
+        
+        print("\nProceeding with network setup...")
+        time.sleep(2)
+
+    def create_project(self, project_name):
+        """Create or open GNS3 project"""
+        try:
+            projects = self.server.projects
+            self.project = next((p for p in projects if p.name == project_name), None)
+            
+            if not self.project:
+                print(f"\nCreating new project: {project_name}")
+                self.project = Project(name=project_name, connector=self.server)
+                self.project.create()
+            else:
+                print(f"\nOpening existing project: {project_name}")
+                self.project.open()
+            
+            return True
+        except Exception as e:
+            print(f"\nProject creation failed: {e}")
+            return False
+
+    def add_device(self, device_type, number, x=0, y=0):
+        """Add device to project with proper configuration"""
+        hostname = self.configurator.generate_hostname(device_type, number)
+        profile = self.configurator.device_profiles.get(device_type.lower(), {})
+        
+        try:
+            print(f"\nAdding {device_type} {number} ({hostname}) at ({x},{y})")
+            
+            node = Node(
+                project_id=self.project.project_id,
+                connector=self.server,
+                name=hostname,
+                template=profile.get('template', f"cisco_{device_type.lower()}"),
+                x=x,
+                y=y
+            )
+            
+            # Set device properties
+            if 'ram' in profile:
+                node.set_property('ram', profile['ram'])
+            if 'vcpu' in profile:
+                node.set_property('vcpu', profile['vcpu'])
+            if 'adapters' in profile:
+                node.set_property('adapters', profile['adapters'])
+            if 'image' in profile:
+                node.set_property('image', os.path.expanduser(profile['image']))
+            
+            # Enable network connection replication
+            node.set_property('replicate_network_connection', True)
+            
+            node.create()
+            self.nodes[hostname] = node
+            print(f"Successfully created {hostname}")
+            return node
+        except Exception as e:
+            print(f"\nFailed to create {hostname}: {e}")
+            return None
+
+    def connect_devices(self, device1, interface1, device2, interface2):
+        """Connect two devices with proper interface mapping"""
+        try:
+            print(f"\nConnecting {device1}:{interface1} to {device2}:{interface2}")
+            
+            # Determine device types for interface mapping
+            dev1_type = ''.join([c for c in device1 if not c.isdigit()]).lower()
+            dev2_type = ''.join([c for c in device2 if not c.isdigit()]).lower()
+            
+            # Get physical port numbers
+            adapter1 = self.configurator.get_physical_port(dev1_type, interface1)
+            adapter2 = self.configurator.get_physical_port(dev2_type, interface2)
+            
+            link = Link(
+                project_id=self.project.project_id,
+                connector=self.server,
+                nodes=[
+                    {"node_id": self.nodes[device1].node_id, "adapter_number": adapter1},
+                    {"node_id": self.nodes[device2].node_id, "adapter_number": adapter2}
+                ]
+            )
+            link.create()
+            print(f"Successfully connected {device1}:{interface1} to {device2}:{interface2}")
+            return True
+        except Exception as e:
+            print(f"\nFailed to connect {device1} and {device2}: {e}")
+            return False
+
+    def configure_device(self, node, username="group17admin", password="group17adminpassword"):
+        """Configure device with initial settings"""
+        try:
+            hostname = node.name
+            device_type = ''.join([c for c in hostname if not c.isdigit()]).lower()
+            
+            print(f"\nConfiguring {hostname} ({device_type})...")
+            print("Waiting for device to boot (45 seconds)...")
+            time.sleep(45)
+            
+            # Initialize SSH connection
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(node.console_host, username=username, password=password)
+            
+            # Get configuration commands
+            commands = self.configurator.get_initial_config_commands(hostname, device_type)
+            
+            # Execute commands
+            print(f"Applying {len(commands)} configuration commands...")
+            for cmd in commands:
+                stdin, stdout, stderr = ssh.exec_command(cmd)
+                time.sleep(0.5)
+                output = stdout.read().decode().strip()
+                if output:
+                    print(f"{hostname} [{cmd}]: {output}")
+            
+            ssh.close()
+            print(f"Successfully configured {hostname}")
+            return True
+        except Exception as e:
+            print(f"\nConfiguration failed for {node.name}: {e}")
+            return False
+
+    def setup_network(self):
+        """Setup the complete network as specified in the document"""
+        print("\n=== Starting Network Deployment ===")
+        
+        # Create project
+        if not self.create_project("GROUP_17_Project"):
+            return False
+        
+        # Device layout (type, number, x, y)
+        devices = [
+            ('router', 1, 100, 100),
+            ('router', 2, 300, 100),
+            ('router', 3, 500, 100),
+            ('switch', 1, 200, 300),
+            ('switch', 2, 400, 300),
+            ('cloud', 1, 100, 0),
+            ('end_device', 1, 200, 400),
+            ('end_device', 2, 400, 400)
+        ]
+        
+        # Create all devices
+        for device in devices:
+            if not self.add_device(*device):
+                print("\nAborting network setup due to device creation failure")
+                return False
+        
+        # Network connections (device1, interface1, device2, interface2)
+        connections = [
+            ('Cloud1', 'eth0', 'R1', 'g0/0'),  # Cloud to R1 as per document
+            ('R1', 'g0/1', 'SW1', 'g0/0'),
+            ('R2', 'g0/1', 'SW1', 'g0/1'),
+            ('R2', 'g0/2', 'SW2', 'g0/0'),
+            ('R3', 'g0/1', 'SW2', 'g0/1'),
+            ('SW1', 'g1/0', 'EndDevice1', 'eth0'),
+            ('SW2', 'g1/0', 'EndDevice2', 'eth0')
+        ]
+        
+        # Create all connections
+        for connection in connections:
+            if not self.connect_devices(*connection):
+                print("\nContinuing despite connection failure")
+        
+        # Configure all devices
+        print("\n=== Configuring Devices ===")
+        for node in self.nodes.values():
+            self.configure_device(node)
+        
+        print("\n=== Network Deployment Complete ===")
+        print("Devices created:")
+        for name, node in self.nodes.items():
+            print(f"- {name} (ID: {node.node_id})")
+        
+        return True
+
+# Main execution
+if __name__ == "__main__":
+    print("=== GROUP 17 Network Automation Script ===")
+    print("This script will:")
+    print("- Configure VMware and GNS3 settings")
+    print("- Create a GNS3 project with 3 routers, 2 switches, cloud, and 2 end devices")
+    print("- Connect all devices as specified")
+    print("- Apply basic configurations to all devices")
+    
+    input("\nPress Enter to begin or Ctrl+C to cancel...")
+    
+    try:
+        manager = NetworkManager()
+        if manager.setup_network():
+            print("\nSUCCESS: Network deployed successfully")
+        else:
+            print("\nWARNING: Network deployment completed with some issues")
+    except Exception as e:
+        print(f"\nERROR: Critical failure during deployment: {e}")
+    finally:
+        print("\nScript execution complete")
