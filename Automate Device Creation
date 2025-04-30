@@ -65,5 +65,4 @@ def setup_network(file_path):
     
     print("Network setup completed in GNS3.")
 
-# Run the setup script
-setup_network("/mnt/data/Enterprise_Network_Group17.xlsx")
+setup_network("Enterprise_Network_Group17.xlsx")
