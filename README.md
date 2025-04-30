@@ -63,45 +63,11 @@ There is a need for diverse and representative network traffic data to enhance t
    - Compare synthetic PCAP data with real-world benchmarks to ensure fidelity.  
    - Adjust parameters (e.g., latency, packet size) to refine simulations.  
 
----
-
-### IV. Major Deliverables  
-
-#### a. Required Deliverables (must have)  
-| Deliverable                          | Due Date      |  
-|--------------------------------------|---------------|  
-| Draft Penetration Testing Appendix   | Mid Fall      |  
-| Final Penetration Testing Appendix   | Late-Fall     |  
-| Draft Report                         | Early Spring  |  
-| Final Report                         | Late Spring   |  
-| Network Generation and Collection Framework | Late Spring   |  
-
-#### b. Desired Deliverables (nice to haves)  
-| Deliverable                          | Due Date      |  
-|--------------------------------------|---------------|  
-| Network Analysis Tool User Guide     | Late Spring   |  
-| Network Structure Analysis           | Late Spring   |  
-
----
-
-### V. Hours / Week  
-2 hours/week with the ability to answer questions via email.  
+--- 
 
 ### VI. Project Resources  
 | Resource Type    | Description                          | Provided By (GMU or Sponsor) |  
 |-------------------|--------------------------------------|-----------------------------|  
 | Compute           | Virtual Lab resources                | GMU                         |  
 | Software          | Enterprise Network Applications      | Free Online Applications (Zoom, Gmail, etc.), Microsoft services |  
-
-### VII. Student Team: Skills and Size  
-#### a. Required Skills  
-- Familiarity with PCAP data and network structures.  
-#### b. Desired Skills  
-- Experience with network monitoring tools (e.g., Wireshark, physical TAPs).  
-- Knowledge of virtual/physical infrastructure (e.g., VMware, GNS3).  
-- Python programming for automation and data generation.  
-#### c. Team Size  
-4-5 students.  
-
-### VIII. Citizenship:  
-Yes  
+| Software          | GNS3 and device images               | GMU
