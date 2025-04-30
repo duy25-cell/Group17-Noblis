@@ -1,6 +1,5 @@
 import requests
 
-# GNS3 Server Configuration
 GNS3_SERVER = "http://localhost:3080"
 PROJECT_ID = "Group17"
 
