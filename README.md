@@ -26,7 +26,7 @@ d. Implementing PCAP data collection mechanisms at multiple points within the si
 e. Analyzing how network traffic patterns and PCAP data characteristics change with different network configurations and user behaviors.  
 
 ### III. Project Overview:  
-This capstone project challenges undergraduate students to integrate knowledge from Cyber Security, Networking, and Data Collection to address a critical need in the field of network analysis. The focus is on developing a framework for generating synthetic Packet Capture (PCAP) data across various simulated network environments.  
+This capstone project encapsulated knowledge from Cyber Security, Networking, and Data Collection to address a critical need in the field of network analysis. The focus is on developing a framework for generating synthetic Packet Capture (PCAP) data across various simulated network environments.  
 
 There is a need for diverse and representative network traffic data to enhance threat detection, network analysis, and security tool development. However, obtaining relevant PCAP data from real networks poses privacy and logistical challenges. This project aims to address this concern by creating a versatile system for simulating different network architectures and generating corresponding PCAP data.  
 
